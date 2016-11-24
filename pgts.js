@@ -49,15 +49,20 @@ const levelToExp = levelDifferences.reduce((result, current) => {
   }, [0])
 
 const parser = parse({delimiter: ','}, function (err, responses) {
-  const users = responses.reduce((users, response) => {
+  console.log('```')
+  console.log('Runtime debug:')
+  const users = responses.reverse().reduce((users, response) => {
       const
         [ time,
           name,
-          team,
           levelStr,
           expStr,
+          collectorStr,
           joggerStr,
-          collectorStr
+          team,
+          xpScreen,
+          collectorScreen,
+          joggerBadge
         ] = response
       if (name === 'Trainer Name' || !name) {
         return users
@@ -67,7 +72,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       const jogger = parseFloat(joggerStr)
       const collector = parseInt(collectorStr)
       // e.g. 9/18/2016 1:52:07
-      const timestamp = moment(time, "MM/DD/YYYY h:mm:ss")
+      const timestamp = moment(time, "YYYY-MM-DD h:mm:ss")
       const safeName = name.trim().toLowerCase()
 
       const levelLower = levelToExp[level - 1]
@@ -103,24 +108,37 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       }
       return users
     }, {})
+  const invalidUsers = []
   const differences = Object.keys(users).reduce((differences, name) => {
     const user = users[name]
     if (user.length !== 2) {
       console.log(`ERROR: User ${name} has ${user.length} response${user.length > 1 ? 's' : ''}.`)
+      invalidUsers.push([name, user.length])
       return differences
     }
     const [ before, after ] = user
+    const minutes = Math.round(moment.duration(after.timestamp.diff(before.timestamp)).asMinutes())
+    const multiplier = minutes > 120 ?
+      120 / minutes : 1.0
+    const expGain = after.exp - before.exp
+    const jogged = after.jogger - before.jogger
+    const collected = after.collector - before.collector
 
     const difference =
       { levelGain: after.level - before.level
-      , expGain: after.exp - before.exp
+      , expGain: expGain * multiplier
+      , realGain: expGain
       , signIn: before.timestamp.format('LT')
       , signOut: after.timestamp.format('LT')
-      , minutes: Math.round(moment.duration(after.timestamp.diff(before.timestamp)).asMinutes())
+      , minutes
+      , overtime: minutes - 120
       , name: before.name
-      , jogged: after.jogger - before.jogger
-      , collected: after.collector - before.collector
+      , jogged: jogged * multiplier
+      , realJogged: jogged
+      , collected: collected * multiplier
+      , realCollected: collected
       , team: before.team
+      , multiplier
       }
 
     // Validation
@@ -150,8 +168,9 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       valid = false
     }
     difference.valid = valid
-
-    differences[name] = difference
+    if (valid) {
+      differences[name] = difference
+    }
     return differences
   }, {})
   const names = Object.keys(differences)
@@ -168,25 +187,34 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     }
     return teams
   }, { instinct: 0, valor: 0, mystic: 0 })
+  console.log('End debug.')
+  console.log('```\n')
+
   const printUser = name => {
       const user = differences[name]
+      const real = user.multiplier === 1.0
+      if (!user) return
       console.log(
         `
-        ${user.name} - lvl ${users[name][1].level} - ${user.team}
-        -----------------------------------------
-        From ${user.signIn} to ${user.signOut} (${user.minutes} minutes)
-        EXP Gain: ${user.expGain} EXP
-        Collected: ${user.collected} Pokémon
-        Jogged: ${user.jogged.toFixed(3)} km
-        ${user.levelGain ? `Level gain: ${user.levelGain}` : ''}
-        `
+${user.name} - lvl ${users[name][1].level} - ${user.team}
+-----------------------------------------
+
+- From ${user.signIn} to ${user.signOut} (${user.minutes} minutes)
+- **Multiplier**: ${user.multiplier.toFixed(2)} ${real ? '' : `(overtime: ${user.overtime} minutes)`}
+- **EXP Gain**: ${Math.round(user.expGain)} EXP${real ? '' :
+  `\t(Scaled from: ${Math.round(user.realGain)})`}
+- **Collected**: ${Math.round(user.collected)} Pokémon${real ? '' :
+  `\t(Scaled from: ${Math.round(user.realCollected)})`}
+- **Jogged**: ${user.jogged.toFixed(3)} km${real ? '' :
+  `\t(Scaled from: ${user.realJogged.toFixed(3)})`}
+${user.levelGain ? `- **Level gain**: ${user.levelGain}\n` : ''}`
       )
     }
 
   const printMost = (property, list) => {
-    console.log(`\n~~~~~~~~~~ THE BEST ${property.toUpperCase()}S ~~~~~~~~~~\n`)
+    console.log(`\n# The best ${property}s\n`)
     list.slice(0, 5).forEach((name, number) => {
-      console.log(`#${number + 1} ${property}:`)
+      console.log(`### #${number + 1} ${property}`)
       printUser(name)
     })
   }
@@ -215,8 +243,16 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     }))
   })
 
-  console.log('Random pool', randomWinnerPool)
-  console.log('Suggestion:', randomWinnerPool[
+  const printUsernames = usernames => usernames.forEach(name => console.log(`- ${name}`))
+
+  console.log(`\n~~~~~~~~~~ INVALID NUMBER OF RESPONSES ~~~~~~~~~~\n`)
+  printUsernames(invalidUsers.sort())
+
+  console.log(`\n~~~~~~~~~~ THE RANDOM PRIZE ~~~~~~~~~~\n`)
+
+  console.log('Picking from:')
+  printUsernames(randomWinnerPool.sort())
+  console.log('\nSuggestion:', randomWinnerPool[
       Math.floor((Math.random() * randomWinnerPool.length))
     ]
   )
@@ -229,32 +265,36 @@ const parser = parse({delimiter: ','}, function (err, responses) {
 
   console.log('\n\n~~~~~~ Team Divide ~~~~~~')
   const total = names.length
-  console.log(`${total} trainers joined us today.`)
+  console.log(`${total} trainers joined us today (an additional ${invalidUsers.length} did not check in twice)`)
   console.log(`Instinct: ${teamCounts.instinct} (${(100 * teamCounts.instinct / total).toFixed(2)}%)`)
   console.log(`Valor: ${teamCounts.valor} (${(100 * teamCounts.valor / total).toFixed(2)}%)`)
   console.log(`Mystic: ${teamCounts.mystic} (${(100 * teamCounts.mystic / total).toFixed(2)}%)`)
   console.log(`\n\nTogether we: (average in brackets)
-    - Collected ${totalOf(names)('collected')} Pokémon (${(totalOf(names)('collected') / names.length).toFixed(2)})
-        * Instinct: ${totalOf(teamInstinct)('collected')} (${(totalOf(teamInstinct)('collected') / teamInstinct.length).toFixed(2)})
-        * Mystic:   ${totalOf(teamMystic)('collected')} (${(totalOf(teamMystic)('collected') / teamMystic.length).toFixed(2)})
-        * Valor:    ${totalOf(teamValor)('collected')} (${(totalOf(teamValor)('collected') / teamValor.length).toFixed(2)})
-    - Jogged ${totalOf(names)('jogged').toFixed(3)} km (${(totalOf(names)('jogged') / names.length).toFixed(3)})
-        * Instinct: ${totalOf(teamInstinct)('jogged').toFixed(3)} km (${(totalOf(teamInstinct)('jogged') / teamInstinct.length).toFixed(3)})
-        * Mystic:   ${totalOf(teamMystic)('jogged').toFixed(3)} km (${(totalOf(teamMystic)('jogged') / teamMystic.length).toFixed(3)})
-        * Valor:    ${totalOf(teamValor)('jogged').toFixed(3)} km (${(totalOf(teamValor)('jogged') / teamValor.length).toFixed(3)})
-    - Gained ${totalOf(names)('expGain')} EXP (${(totalOf(names)('expGain') / names.length).toFixed(0)})
-        * Instinct: ${totalOf(teamInstinct)('expGain')} EXP (${(totalOf(teamInstinct)('expGain') / teamInstinct.length).toFixed(0)})
-        * Mystic:   ${totalOf(teamMystic)('expGain')} EXP (${(totalOf(teamMystic)('expGain') / teamMystic.length).toFixed(0)})
-        * Valor:    ${totalOf(teamValor)('expGain')} EXP (${(totalOf(teamValor)('expGain') / teamValor.length).toFixed(0)})
-    - Grew ${totalOf(names)('levelGain')} levels (${(totalOf(names)('levelGain') / names.length).toFixed(1)})
-        * Instinct: ${totalOf(teamInstinct)('levelGain')} (${(totalOf(teamInstinct)('levelGain') / teamInstinct.length).toFixed(1)})
-        * Mystic:   ${totalOf(teamMystic)('levelGain')} (${(totalOf(teamMystic)('levelGain') / teamMystic.length).toFixed(1)})
-        * Valor:    ${totalOf(teamValor)('levelGain')} (${(totalOf(teamValor)('levelGain') / teamValor.length).toFixed(1)})
-    - Played for ${totalOf(names)('minutes')} minutes (${(totalOf(names)('minutes') / names.length).toFixed(1)})
-        * Instinct: ${totalOf(teamInstinct)('minutes')} minutes (${(totalOf(teamInstinct)('minutes') / teamInstinct.length).toFixed(1)})
-        * Mystic:   ${totalOf(teamMystic)('minutes')} minutes (${(totalOf(teamMystic)('minutes') / teamMystic.length).toFixed(1)})
-        * Valor:    ${totalOf(teamValor)('minutes')} minutes (${(totalOf(teamValor)('minutes') / teamValor.length).toFixed(1)})
+    - Collected ${Math.round(totalOf(names)('collected'))} Pokémon (${(totalOf(names)('collected') / names.length).toFixed(2)} ea)
+        * Instinct: ${Math.round(totalOf(teamInstinct)('collected'))} (${(totalOf(teamInstinct)('collected') / teamInstinct.length).toFixed(2)} ea)
+        * Mystic:   ${Math.round(totalOf(teamMystic)('collected'))} (${(totalOf(teamMystic)('collected') / teamMystic.length).toFixed(2)} ea)
+        * Valor:    ${Math.round(totalOf(teamValor)('collected'))} (${(totalOf(teamValor)('collected') / teamValor.length).toFixed(2)} ea)
+    - Jogged ${totalOf(names)('jogged').toFixed(3)} km (${(totalOf(names)('jogged') / names.length).toFixed(3)} ea)
+        * Instinct: ${totalOf(teamInstinct)('jogged').toFixed(3)} km (${(totalOf(teamInstinct)('jogged') / teamInstinct.length).toFixed(3)} ea)
+        * Mystic:   ${totalOf(teamMystic)('jogged').toFixed(3)} km (${(totalOf(teamMystic)('jogged') / teamMystic.length).toFixed(3)} ea)
+        * Valor:    ${totalOf(teamValor)('jogged').toFixed(3)} km (${(totalOf(teamValor)('jogged') / teamValor.length).toFixed(3)} ea)
+    - Gained ${Math.round(totalOf(names)('expGain'))} EXP (${(totalOf(names)('expGain') / names.length).toFixed(0)} ea)
+        * Instinct: ${Math.round(totalOf(teamInstinct)('expGain'))} EXP (${(totalOf(teamInstinct)('expGain') / teamInstinct.length).toFixed(0)} ea)
+        * Mystic:   ${Math.round(totalOf(teamMystic)('expGain'))} EXP (${(totalOf(teamMystic)('expGain') / teamMystic.length).toFixed(0)} ea)
+        * Valor:    ${Math.round(totalOf(teamValor)('expGain'))} EXP (${(totalOf(teamValor)('expGain') / teamValor.length).toFixed(0)} ea)
+    - Grew ${totalOf(names)('levelGain')} levels (${(totalOf(names)('levelGain') / names.length).toFixed(1)} ea)
+        * Instinct: ${totalOf(teamInstinct)('levelGain')} (${(totalOf(teamInstinct)('levelGain') / teamInstinct.length).toFixed(1)} ea)
+        * Mystic:   ${totalOf(teamMystic)('levelGain')} (${(totalOf(teamMystic)('levelGain') / teamMystic.length).toFixed(1)} ea)
+        * Valor:    ${totalOf(teamValor)('levelGain')} (${(totalOf(teamValor)('levelGain') / teamValor.length).toFixed(1)} ea)
+    - Played for ${totalOf(names)('minutes')} minutes (${(totalOf(names)('minutes') / names.length).toFixed(1)} ea)
+        * Instinct: ${totalOf(teamInstinct)('minutes')} minutes (${(totalOf(teamInstinct)('minutes') / teamInstinct.length).toFixed(1)} ea)
+        * Mystic:   ${totalOf(teamMystic)('minutes')} minutes (${(totalOf(teamMystic)('minutes') / teamMystic.length).toFixed(1)} ea)
+        * Valor:    ${totalOf(teamValor)('minutes')} minutes (${(totalOf(teamValor)('minutes') / teamValor.length).toFixed(1)} ea)
   `)
+
+  const printAll = users => users.forEach(name => printUser(name))
+  printAll(Object.keys(differences).sort())
+
 })
 
 fs.createReadStream(__dirname + '/responses.csv').pipe(parser)
