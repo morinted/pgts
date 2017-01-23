@@ -51,7 +51,7 @@ const levelToExp = levelDifferences.reduce((result, current) => {
 const parser = parse({delimiter: ','}, function (err, responses) {
   console.log('```')
   console.log('Runtime debug:')
-  const users = responses.reverse().reduce((users, response) => {
+  const users = responses.reduce((users, response) => {
       const
         [ time,
           name,
@@ -109,6 +109,11 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       return users
     }, {})
   const invalidUsers = []
+  const stats = ['expGain', 'jogged', 'collected']
+  const highest = stats.reduce((highest, stat) => {
+    highest[stat] = 0
+    return highest
+  }, {})
   const differences = Object.keys(users).reduce((differences, name) => {
     const user = users[name]
     if (user.length !== 2) {
@@ -139,6 +144,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       , realCollected: collected
       , team: before.team
       , multiplier
+      , ratio: {}
       }
 
     // Validation
@@ -170,9 +176,13 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     difference.valid = valid
     if (valid) {
       differences[name] = difference
+      stats.forEach(stat => {
+        highest[stat] = Math.max(highest[stat], difference[stat])
+      })
     }
     return differences
   }, {})
+
   const names = Object.keys(differences)
   const teamCounts = names.reduce((teams, name) => {
     const team = differences[name].team.toLowerCase()
@@ -187,6 +197,17 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     }
     return teams
   }, { instinct: 0, valor: 0, mystic: 0 })
+  names.forEach(name => {
+    stats.forEach(stat => {
+      differences[name].ratio[stat] = differences[name][stat] / highest[stat]
+    })
+    const rating = stats.reduce(
+      (rating, stat) => rating * differences[name].ratio[stat], 1
+    ) * 100
+    console.log(rating)
+    differences[name].rating = rating
+  })
+
   console.log('End debug.')
   console.log('```\n')
 
@@ -201,6 +222,7 @@ ${user.name} - lvl ${users[name][1].level} - ${user.team}
 
 - From ${user.signIn} to ${user.signOut} (${user.minutes} minutes)
 - **Multiplier**: ${user.multiplier.toFixed(2)} ${real ? '' : `(overtime: ${user.overtime} minutes)`}
+- **Overall Rating**: ${user.rating.toFixed(2)}%
 - **EXP Gain**: ${Math.round(user.expGain)} EXP${real ? '' :
   `\t(Scaled from: ${Math.round(user.realGain)})`}
 - **Collected**: ${Math.round(user.collected)} Pokémon${real ? '' :
@@ -224,11 +246,13 @@ ${user.levelGain ? `- **Level gain**: ${user.levelGain}\n` : ''}`
   const mostCollected = [...names.sort(most('collected'))]
   const mostExpGain = [...names.sort(most('expGain'))]
   const mostLevelGain = [...names.sort(most('levelGain'))]
+  const highestRatio = [...names.sort(most('rating'))]
 
   printMost('jogger', mostJogged)
   printMost('collector', mostCollected)
   printMost('exp gain', mostExpGain)
   printMost('level gain', mostLevelGain)
+  printMost('ratio', highestRatio)
 
   const randomWinnerPool = names.filter(name => {
     // Winner must have played for 2 hours
