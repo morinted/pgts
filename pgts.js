@@ -56,12 +56,12 @@ const parser = parse({delimiter: ','}, function (err, responses) {
         [ time,
           name,
           levelStr,
-          expStr,
-          collectorStr,
-          joggerStr,
           team,
+          expStr,
           xpScreen,
+          collectorStr,
           collectorScreen,
+          joggerStr,
           joggerBadge
         ] = response
       if (name === 'Trainer Name' || !name) {
@@ -83,9 +83,9 @@ const parser = parse({delimiter: ','}, function (err, responses) {
         console.log(`Reported level should have: ${levelLower} EXP to ${levelHigher} EXP`)
         console.log(`This EXP implies level ${
           levelToExp.findIndex((expected, index) => exp < expected ? index : false)}`)
-        if (exp < levelDifferences[level]) {
+        if (exp < levelDifferences[level - 1]) {
           exp += levelLower
-          console.log(`Autocorrecting exp to fit user-reported level: ${exp + levelLower} EXP`)
+          console.log(`Autocorrecting exp to fit user-reported level: ${exp} EXP`)
         } else {
           console.log('I do not know how to fix this.')
         }
@@ -197,6 +197,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     }
     return teams
   }, { instinct: 0, valor: 0, mystic: 0 })
+  let highestRating = 0
   names.forEach(name => {
     stats.forEach(stat => {
       differences[name].ratio[stat] = differences[name][stat] / highest[stat]
@@ -204,8 +205,15 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     const rating = stats.reduce(
       (rating, stat) => rating * differences[name].ratio[stat], 1
     ) * 100
-    console.log(rating)
     differences[name].rating = rating
+    if (rating > highestRating) {
+      highestRating = rating
+    }
+  })
+  // This code normalizes so that top % is 100%
+  names.forEach(name => {
+    differences[name].rating =
+      differences[name].rating / highestRating * 100
   })
 
   console.log('End debug.')
