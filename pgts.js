@@ -62,7 +62,9 @@ const parser = parse({delimiter: ','}, function (err, responses) {
           collectorStr,
           collectorScreen,
           joggerStr,
-          joggerBadge
+          joggerBadge,
+          eggStr,
+          eggScreen
         ] = response
       if (name === 'Trainer Name' || !name) {
         return users
@@ -71,6 +73,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       const level = parseInt(levelStr, 10)
       const jogger = parseFloat(joggerStr)
       const collector = parseInt(collectorStr)
+      //const egg = parseInt(eggStr)
       // e.g. 9/18/2016 1:52:07
       const timestamp = moment(time, "YYYY-MM-DD h:mm:ss")
       const safeName = name.trim().toLowerCase()
@@ -100,6 +103,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
         , exp
         , jogger
         , collector
+        //, egg
         }
       if (!(safeName in users)) {
         users[safeName] = [ stats ]
@@ -128,6 +132,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     const expGain = after.exp - before.exp
     const jogged = after.jogger - before.jogger
     const collected = after.collector - before.collector
+    //const egg = after.egg - before.egg || 0
 
     const difference =
       { levelGain: after.level - before.level
@@ -144,6 +149,8 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       , realCollected: collected
       , team: before.team
       , multiplier
+      //, realEgg: egg
+      //, egg: egg * multiplier
       , ratio: {}
       }
 
@@ -169,17 +176,19 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       console.log(`ERROR: User ${name} caught negative Pokemon.`)
       valid = false
     }
+    // if (difference.egg < 0) {
+    //   console.log(`ERROR: User ${name} hatched negative eggs.`)
+    //   valid = false
+    // }
     if (before.team !== after.team) {
       console.log(`ERROR: User ${name} switched teams (${before.team} to ${after.team})`)
       valid = false
     }
     difference.valid = valid
-    if (valid) {
-      differences[name] = difference
-      stats.forEach(stat => {
-        highest[stat] = Math.max(highest[stat], difference[stat])
-      })
-    }
+    differences[name] = difference
+    stats.forEach(stat => {
+      highest[stat] = Math.max(highest[stat], difference[stat])
+    })
     return differences
   }, {})
 
@@ -200,12 +209,12 @@ const parser = parse({delimiter: ','}, function (err, responses) {
   let highestRating = 0
   names.forEach(name => {
     stats.forEach(stat => {
-      differences[name].ratio[stat] = differences[name][stat] / highest[stat]
+      differences[name].ratio[stat] = (differences[name][stat] || 0) / (highest[stat] || 0)
     })
     const rating = stats.reduce(
-      (rating, stat) => rating * differences[name].ratio[stat], 1
+      (rating, stat) => rating * (differences[name].ratio[stat] || 1), 1
     ) * 100
-    differences[name].rating = rating
+    differences[name].rating = rating || 0.5
     if (rating > highestRating) {
       highestRating = rating
     }
@@ -213,7 +222,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
   // This code normalizes so that top % is 100%
   names.forEach(name => {
     differences[name].rating =
-      differences[name].rating / highestRating * 100
+      (differences[name].rating || 0) / (highestRating * 100 || 1)
   })
 
   console.log('End debug.')
@@ -254,12 +263,14 @@ ${user.levelGain ? `- **Level gain**: ${user.levelGain}\n` : ''}`
   const mostCollected = [...names.sort(most('collected'))]
   const mostExpGain = [...names.sort(most('expGain'))]
   const mostLevelGain = [...names.sort(most('levelGain'))]
+  const mostEggHatched = [...names.sort(most('egg'))]
   const highestRatio = [...names.sort(most('rating'))]
 
   printMost('jogger', mostJogged)
   printMost('collector', mostCollected)
   printMost('exp gain', mostExpGain)
   printMost('level gain', mostLevelGain)
+  printMost('egg', mostEggHatched)
   printMost('ratio', highestRatio)
 
   const randomWinnerPool = names.filter(name => {
@@ -318,6 +329,10 @@ ${user.levelGain ? `- **Level gain**: ${user.levelGain}\n` : ''}`
         * Instinct: ${totalOf(teamInstinct)('levelGain')} (${(totalOf(teamInstinct)('levelGain') / teamInstinct.length).toFixed(1)} ea)
         * Mystic:   ${totalOf(teamMystic)('levelGain')} (${(totalOf(teamMystic)('levelGain') / teamMystic.length).toFixed(1)} ea)
         * Valor:    ${totalOf(teamValor)('levelGain')} (${(totalOf(teamValor)('levelGain') / teamValor.length).toFixed(1)} ea)
+    - Hatched ${totalOf(names)('egg')} egg (${(totalOf(names)('egg') / names.length).toFixed(1)} ea)
+        * Instinct: ${totalOf(teamInstinct)('egg')} egg (${(totalOf(teamInstinct)('egg') / teamInstinct.length).toFixed(1)} ea)
+        * Mystic:   ${totalOf(teamMystic)('egg')} egg (${(totalOf(teamMystic)('egg') / teamMystic.length).toFixed(1)} ea)
+        * Valor:    ${totalOf(teamValor)('egg')} egg (${(totalOf(teamValor)('egg') / teamValor.length).toFixed(1)} ea)
     - Played for ${totalOf(names)('minutes')} minutes (${(totalOf(names)('minutes') / names.length).toFixed(1)} ea)
         * Instinct: ${totalOf(teamInstinct)('minutes')} minutes (${(totalOf(teamInstinct)('minutes') / teamInstinct.length).toFixed(1)} ea)
         * Mystic:   ${totalOf(teamMystic)('minutes')} minutes (${(totalOf(teamMystic)('minutes') / teamMystic.length).toFixed(1)} ea)
