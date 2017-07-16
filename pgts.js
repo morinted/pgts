@@ -50,6 +50,7 @@ const levelToExp = levelDifferences.reduce((result, current) => {
 
 const parser = parse({delimiter: ','}, function (err, responses) {
   console.log('```')
+  responses.shift() // Remove header row
   const users = responses.reduce((users, response) => {
       const
         [ time,
