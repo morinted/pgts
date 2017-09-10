@@ -343,7 +343,7 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
 
   console.log('\n# All Players')
   const printAll = users => users.forEach(name => printUser(name, true))
-  //printAll(Object.keys(differences).sort())
+  printAll(Object.keys(differences).sort())
 
 })
 
