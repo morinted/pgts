@@ -211,7 +211,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
   let highestRating = 0
   names.forEach(name => {
     stats.forEach(stat => {
-      differences[name].ratio[stat] = (differences[name][stat] || 0) / (highest[stat] || 0)
+      differences[name].ratio[stat] = (differences[name][stat] || 0) / (highest[stat] || 1)
     })
     const rating = stats.reduce(
       (rating, stat) => rating * (differences[name].ratio[stat] || 0), 1
@@ -275,7 +275,7 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
 
 
   const totalOf = group => property =>
-    group.reduce((total, name) => differences[name][property] + total, 0)
+    group.reduce((total, name) => (differences[name][property] || 0) + total, 0)
   const teamValor = names.filter(name => differences[name].team.toLowerCase().includes('valor'))
   const teamMystic = names.filter(name => differences[name].team.toLowerCase().includes('mystic'))
   const teamInstinct = names.filter(name => differences[name].team.toLowerCase().includes('instinct'))
@@ -317,11 +317,11 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
   printMost('level gain', mostLevelGain)
   //printMost('egg', mostEggHatched)
 
-  const randomWinnerPool = names.filter(name => {
+  const randomWinnerPool = Object.keys(users).filter(name => {
     // Winner must have played for 2 hours
-    if (differences[name].minutes < 90) {
-      return false
-    }
+    // if (differences[name].minutes < 50) {
+    //   return false
+    // }
     // Winner shouldn't be top of any other competitive category
     return !([ mostJogged, mostCollected, mostExpGain ].some(category => {
       if (category[0] === name || category[1] === name) {
@@ -343,7 +343,7 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
 
   console.log('\n# All Players')
   const printAll = users => users.forEach(name => printUser(name, true))
-  printAll(Object.keys(differences).sort())
+  //printAll(Object.keys(differences).sort())
 
 })
 
