@@ -51,11 +51,11 @@ const levelToExp = levelDifferences.reduce((result, current) => {
 const parser = parse({delimiter: ','}, function (err, responses) {
   console.log('```')
   responses.shift() // Remove header row
-  const users = responses.reduce((users, response) => {
+  const users = responses.reduce((users, response, index) => {
       const
         [ time,
-          name,
           levelStr,
+          name,
           team,
           expStr,
           xpScreen,
@@ -63,9 +63,10 @@ const parser = parse({delimiter: ','}, function (err, responses) {
           collectorScreen,
           joggerStr,
           joggerBadge,
-          eggStr,
-          eggScreen
+          pokedexStr
         ] = response
+
+      //if (index >= 5) process.exit()
       if (name === 'Trainer Name' || !name) {
         return users
       }
@@ -73,6 +74,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       const level = parseInt(levelStr, 10)
       const jogger = parseFloat(joggerStr)
       const collector = parseInt(collectorStr)
+      const pokedex = parseInt(pokedexStr)
       //const egg = parseInt(eggStr)
       // e.g. 9/18/2016 1:52:07
       const timestamp = moment(time, "YYYY-MM-DD h:mm:ss")
@@ -101,6 +103,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
         , exp
         , jogger
         , collector
+        , pokedex
         //, egg
         }
       if (!(safeName in users)) {
@@ -130,6 +133,7 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     const expGain = after.exp - before.exp
     const jogged = after.jogger - before.jogger
     const collected = after.collector - before.collector
+    const pokedexed = after.pokedex - before.pokedex
     //const egg = after.egg - before.egg || 0
 
     const difference =
@@ -145,6 +149,8 @@ const parser = parse({delimiter: ','}, function (err, responses) {
       , realJogged: jogged
       , collected: collected * multiplier
       , realCollected: collected
+      , pokedexed: pokedexed * multiplier
+      , realPokedexed: pokedexed
       , team: before.team
       , multiplier
       //, realEgg: egg
@@ -176,6 +182,11 @@ const parser = parse({delimiter: ','}, function (err, responses) {
     if (difference.collected < 0) {
       console.log(`ERROR: User ${name} caught negative Pokemon.`)
       difference.collected = 0
+      valid = false
+    }
+    if (difference.pokedexed < 0) {
+      console.log(`ERROR: User ${name} got negative new types of Pokemon.`)
+      difference.pokedexed = 0
       valid = false
     }
     // if (difference.egg < 0) {
@@ -245,6 +256,8 @@ ${user.name} - lvl ${users[name][1].level} - ${user.team}${
   `\t(Scaled from: ${Math.round(user.realGain)})`} |
 | Caught          | ${Math.round(user.collected)} Pokémon${real ? '' :
   `\t(Scaled from: ${Math.round(user.realCollected)})`} |
+| New Pokedex     | ${Math.round(user.pokedexed)} Species${real ? '' :
+  `\t(Scaled from: ${Math.round(user.realPokedexed)})`} |
 | Distance        | ${user.jogged.toFixed(3)} km${real ? '' :
   `\t(Scaled from: ${user.realJogged.toFixed(3)})`} |
 | Rating          | ${user.rating.toFixed(2)}% |
@@ -268,6 +281,7 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
   
   const mostJogged = [...names.sort(most('jogged'))]
   const mostCollected = [...names.sort(most('collected'))]
+  const mostPokedexed = [...names.sort(most('pokedexed'))]
   const mostExpGain = [...names.sort(most('expGain'))]
   const mostLevelGain = [...names.sort(most('levelGain'))]
   //const mostEggHatched = [...names.sort(most('egg'))]
@@ -292,6 +306,10 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
     * Instinct: ${Math.round(totalOf(teamInstinct)('collected'))} (${(totalOf(teamInstinct)('collected') / teamInstinct.length).toFixed(2)} ea)
     * Mystic:   ${Math.round(totalOf(teamMystic)('collected'))} (${(totalOf(teamMystic)('collected') / teamMystic.length).toFixed(2)} ea)
     * Valor:    ${Math.round(totalOf(teamValor)('collected'))} (${(totalOf(teamValor)('collected') / teamValor.length).toFixed(2)} ea)
+- Pokedexed ${Math.round(totalOf(names)('pokedexed'))} Pokémon (${(totalOf(names)('pokedexed') / names.length).toFixed(2)} ea)
+    * Instinct: ${Math.round(totalOf(teamInstinct)('pokedexed'))} (${(totalOf(teamInstinct)('pokedexed') / teamInstinct.length).toFixed(2)} ea)
+    * Mystic:   ${Math.round(totalOf(teamMystic)('pokedexed'))} (${(totalOf(teamMystic)('pokedexed') / teamMystic.length).toFixed(2)} ea)
+    * Valor:    ${Math.round(totalOf(teamValor)('pokedexed'))} (${(totalOf(teamValor)('pokedexed') / teamValor.length).toFixed(2)} ea)
 - Jogged ${totalOf(names)('jogged').toFixed(3)} km (${(totalOf(names)('jogged') / names.length).toFixed(3)} ea)
     * Instinct: ${totalOf(teamInstinct)('jogged').toFixed(3)} km (${(totalOf(teamInstinct)('jogged') / teamInstinct.length).toFixed(3)} ea)
     * Mystic:   ${totalOf(teamMystic)('jogged').toFixed(3)} km (${(totalOf(teamMystic)('jogged') / teamMystic.length).toFixed(3)} ea)
@@ -312,6 +330,7 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
 
   printMost('ratio', highestRatio)
   printMost('exp gain', mostExpGain)
+  printMost('pokedex increase', mostPokedexed)
   printMost('collector', mostCollected)
   printMost('jogger', mostJogged)
   printMost('level gain', mostLevelGain)
@@ -343,7 +362,7 @@ ${user.levelGain ? `| Leveled Up      | ${user.levelGain} |
 
   console.log('\n# All Players')
   const printAll = users => users.forEach(name => printUser(name, true))
-  printAll(Object.keys(differences).sort())
+//  printAll(Object.keys(differences).sort())
 
 })
 
